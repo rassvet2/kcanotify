@@ -69,6 +69,9 @@
 
 -keepnames class com.antest1.kcanotify.** { *; }
 
+#LittleProxy
+-keepnames class io.netty.** { *; }
+-keepnames class org.littleshoot.** { *; }
 
 #NetGuard
 -keepnames class eu.faircode.netguard.** { *; }
