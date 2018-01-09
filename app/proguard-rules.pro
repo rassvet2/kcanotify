@@ -73,6 +73,13 @@
 -keepnames class io.netty.** { *; }
 -keepnames class org.littleshoot.** { *; }
 
+-dontwarn io.netty.**
+-dontwarn org.apache.commons.**
+-keep class org.apache.http.** { *; }
+-dontwarn org.apache.http.**
+-dontwarn org.apache.log4j.**
+-dontwarn org.littleshoot.**
+
 #NetGuard
 -keepnames class eu.faircode.netguard.** { *; }
 

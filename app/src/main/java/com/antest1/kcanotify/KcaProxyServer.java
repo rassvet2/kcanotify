@@ -17,9 +17,12 @@ import org.littleshoot.proxy.HttpFiltersSourceAdapter;
 import org.littleshoot.proxy.HttpProxyServer;
 import org.littleshoot.proxy.impl.DefaultHttpProxyServer;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Handler;
+import android.preference.PreferenceManager;
 import android.util.Base64;
 import android.util.Log;
+import android.widget.Toast;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -39,12 +42,18 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 
+import static com.antest1.kcanotify.KcaConstants.ERROR_TYPE_VPN;
+import static com.antest1.kcanotify.KcaConstants.KCANOTIFY_DB_VERSION;
+import static com.antest1.kcanotify.KcaVpnData.responseData;
+
 public class KcaProxyServer {
     private static boolean is_on;
     private static HttpProxyServer proxyServer;
     private static final int PORT = 24110;
     public static Context cntx;
     public static Handler handler;
+
+    public static KcaDBHelper dbHelper;
 
     public static final int KC_REFERER_APP = 1;
     public static final int KC_REFERER_BROWSER = 2;
@@ -77,13 +86,20 @@ public class KcaProxyServer {
         proxyServer = null;
     }
 
-    public static void start(Handler h) {
+    public static void setHandler(Handler h) {
         handler = h;
+    }
+
+    public static void start(Context context) {
+        cntx = context;
+        dbHelper = new KcaDBHelper(cntx, null, KCANOTIFY_DB_VERSION);
         if (proxyServer == null) {
             HttpFiltersSource filtersSource = getFiltersSource();
             proxyServer = DefaultHttpProxyServer.bootstrap().withPort(PORT).withAllowLocalOnly(false)
                     .withConnectTimeout(20000).withFiltersSource(filtersSource).withName("FilterProxy").start();
             Log.e("KCA", "Start");
+            Toast.makeText(cntx, "Proxy Start", Toast.LENGTH_LONG).show();
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(cntx);
         }
     }
 
@@ -143,7 +159,7 @@ public class KcaProxyServer {
 
                             boolean isTestRequest = false;
                             boolean isInternalRequest = false;
-
+                            dbHelper.recordErrorLog("v-debug-1", requestUri, "", "", "");
                             Iterator<Map.Entry<String, String>> requestHeader = request.headers().iterator();
                             while (requestHeader.hasNext()) {
                                 Map.Entry<String, String> data = requestHeader.next();
@@ -190,7 +206,6 @@ public class KcaProxyServer {
                                 currentRefererInfo = request.headers().get(HttpHeaders.Names.REFERER);
                                 try {
                                     String responseData = kcaRequest.post(request.getUri(), requestHeaderString, requestBodyStr);
-
                                     JsonObject responseObject = new JsonParser().parse(responseData).getAsJsonObject();
                                     String responseHeader = responseObject.get("header").getAsString();
                                     int statusCode = responseObject.get("status").getAsInt();
@@ -217,10 +232,11 @@ public class KcaProxyServer {
 
                                     KcaHandler k = new KcaHandler(handler, currentUrl, requestBody, responseBody);
                                     executorService.execute(k);
-
-                                    return response;
+                                    return null;
+                                    //return response;
                                 } catch (IOException e) {
-                                    e.printStackTrace();
+                                    dbHelper.recordErrorLog(ERROR_TYPE_VPN, requestUri, "", requestBodyStr, KcaUtils.getStringFromException(e));
+                                    return null;
                                 }
                             }
 

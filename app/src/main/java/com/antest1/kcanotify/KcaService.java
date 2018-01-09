@@ -266,7 +266,9 @@ public class KcaService extends Service {
         startForeground(getNotificationId(NOTI_FRONT, 1), createViewNotification(initTitle, initContent));
         isServiceOn = true;
 
-        KcaVpnData.setHandler(handler);
+        KcaProxyServer.setHandler(handler);
+        //KcaVpnData.setHandler(handler);
+
         KcaBattle.setHandler(nHandler);
         KcaApiData.setHandler(nHandler);
         KcaAlarmService.setHandler(nHandler);

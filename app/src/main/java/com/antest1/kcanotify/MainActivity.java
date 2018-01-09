@@ -115,7 +115,7 @@ public class MainActivity extends AppCompatActivity {
         setSupportActionBar(toolbar);
         getSupportActionBar().setTitle(R.string.app_name);
         prefs.edit().putBoolean(PREF_SVC_ENABLED, KcaService.getServiceStatus()).apply();
-        prefs.edit().putBoolean(PREF_VPN_ENABLED, KcaVpnService.checkOn()).apply();
+        prefs.edit().putBoolean(PREF_VPN_ENABLED, KcaProxyServer.is_on()).apply();
 
         PreferenceManager.setDefaultValues(this, R.xml.pref_settings, false);
         setDefaultPreferences();
@@ -130,20 +130,10 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 if (isChecked) {
-                    try {
-                        final Intent prepare = VpnService.prepare(MainActivity.this);
-                        if (prepare == null) {
-                            //Log.i(TAG, "Prepare done");
-                            onActivityResult(REQUEST_VPN, RESULT_OK, null);
-                        } else {
-                            startActivityForResult(prepare, REQUEST_VPN);
-                        }
-                    } catch (Throwable ex) {
-                        // Prepare failed
-                        Log.e(TAG, ex.toString() + "\n" + Log.getStackTraceString(ex));
-                    }
+                    KcaProxyServer.start(getApplicationContext());
+                    prefs.edit().putBoolean(PREF_VPN_ENABLED, true).apply();
                 } else {
-                    KcaVpnService.stop("switch off", MainActivity.this);
+                    KcaProxyServer.stop();
                     prefs.edit().putBoolean(PREF_VPN_ENABLED, false).apply();
                 }
             }
@@ -460,20 +450,6 @@ public class MainActivity extends AppCompatActivity {
 
     private int setDefaultGameData() {
         return KcaUtils.setDefaultGameData(getApplicationContext(), dbHelper);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, final Intent data) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        //Log.i(TAG, "onActivityResult request=" + requestCode + " result=" + resultCode + " ok=" + (resultCode == RESULT_OK));
-        if (requestCode == REQUEST_VPN) {
-            prefs.edit().putBoolean(PREF_VPN_ENABLED, resultCode == RESULT_OK).apply();
-            if (resultCode == RESULT_OK) {
-                KcaVpnService.start("prepared", this);
-            } else if (resultCode == RESULT_CANCELED) {
-                // Canceled
-            }
-        }
     }
 
     @Override
