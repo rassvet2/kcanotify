@@ -224,6 +224,15 @@ public class KcCalc {
     // endregion
 
     /**
+     * Calculate the probability of the Anti-Air Cut-Ins (対空CI)
+     *
+     * @return
+     */
+    public static double getAACIRate() {
+        // TODO
+    }
+
+    /**
      * Calculate the probability of the Anti-Air Propellant Barrage (対空噴進弾幕)
      *
      * @param user_ship_id
@@ -273,4 +282,80 @@ public class KcCalc {
         return ((0.9 * luck + adjustedAA) / 281 + (launchers - 1) * 15 + (isIseClass ? 25 : 0)) / 100.0;
     }
 
+    public static boolean canOpeningASW() {
+
+    }
+
+    public static final class NightCI {
+
+        public NightCI(
+
+        )
+    }
+
+    /**
+     * @param user_ship_id
+     * @return
+     * @see <a href="https://wikiwiki.jp/kancolle/%E5%A4%9C%E6%88%A6#nightcutin1">夜戦</a>
+     * @see <a href="https://kancolle.fandom.com/wiki/Combat/Night_Battle">Night Battle</a>
+     */
+    public static double getNightCIRate(
+            int user_ship_id,
+            ) {
+        JsonObject userData = getUserShipDataById(user_ship_id, "ship_id,lv,luck,slot,slot_ex");
+        int kc_ship_id = userData.get("ship_id").getAsInt();
+        int stype = getKcShipDataById(kc_ship_id, "stype").get("stype").getAsInt();
+    }
+
+    private static double getNightCIRate(double base, int bonus, int factor) {
+        return (base + bonus) / factor;
+    }
+
+    private static void can
+
+    /**
+     * @param isFlagship              is the activator flagship?
+     * @param isDamaged               is the activator middle damaged?
+     * @param isFriendSearchLight     is friend fleet searchlight activated?
+     * @param isEnemySearchLight      is enemy fleet searchlight activated?
+     * @param isFriendStarShell       is friend fleet star-shell activated?
+     * @param isEnemyStarShell        is enemy fleet star-shell activated?
+     * @param hasSkilledLookouts      is the skilled lookouts (熟練見張員) equipped?
+     * @param hasTorpedoSquadLookouts is the torpedo squadron skilled lookouts (水雷戦隊熟練見張員) equipped?
+     * @return night ci bonus
+     */
+    private static int getNightCIBonus(
+            boolean isFlagship,
+            boolean isDamaged,
+            boolean isFriendSearchLight,
+            boolean isEnemySearchLight,
+            boolean isFriendStarShell,
+            boolean isEnemyStarShell,
+            boolean hasSkilledLookouts,
+            boolean hasTorpedoSquadLookouts
+    ) {
+        int bonus = 0;
+        if (isFlagship) bonus += 15;
+        if (isDamaged) bonus += 18;
+        if (isFriendSearchLight) bonus += 7;
+        if (isEnemySearchLight) bonus -= 5;
+        if (isFriendStarShell) bonus += 4;
+        if (isEnemyStarShell) bonus -= 10;
+        if (hasSkilledLookouts) bonus += 5;
+        if (hasTorpedoSquadLookouts) bonus += 9;
+        return bonus;
+    }
+
+    /**
+     * @param lv   the level of the invoker
+     * @param luck the luck of the invoker
+     * @return night ci term of formula
+     */
+    private static double getNightCITerm(int lv, int luck) {
+        if (luck < 50) {
+            return (double) floor(15 + luck + 0.75 * sqrt(lv));
+        } else {
+            return (double) floor(15 + 50 + sqrt(luck - 50) + 0.8 * sqrt(lv));
+        }
+    }
 }
