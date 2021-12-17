@@ -17,6 +17,7 @@ import static com.antest1.kcanotify.KcaApiData.T2_ANTISUB_PATROL;
 import static com.antest1.kcanotify.KcaApiData.T2_ANTI_AIR_DEVICE;
 import static com.antest1.kcanotify.KcaApiData.T2_AUTOGYRO;
 import static com.antest1.kcanotify.KcaApiData.T2_BOMBER;
+import static com.antest1.kcanotify.KcaApiData.T2_DRUM_CAN;
 import static com.antest1.kcanotify.KcaApiData.T2_FIGHTER;
 import static com.antest1.kcanotify.KcaApiData.T2_GUN_LARGE;
 import static com.antest1.kcanotify.KcaApiData.T2_GUN_LARGE_II;
@@ -29,9 +30,13 @@ import static com.antest1.kcanotify.KcaApiData.T2_RADER_LARGE_II;
 import static com.antest1.kcanotify.KcaApiData.T2_SANSHIKIDAN;
 import static com.antest1.kcanotify.KcaApiData.T2_SEA_BOMBER;
 import static com.antest1.kcanotify.KcaApiData.T2_SEA_SCOUT;
+import static com.antest1.kcanotify.KcaApiData.T2_SHIP_PERSONNEL;
 import static com.antest1.kcanotify.KcaApiData.T2_SONAR;
 import static com.antest1.kcanotify.KcaApiData.T2_SONAR_LARGE;
+import static com.antest1.kcanotify.KcaApiData.T2_SS_TORPEDO;
+import static com.antest1.kcanotify.KcaApiData.T2_SUBMARINE_RADER;
 import static com.antest1.kcanotify.KcaApiData.T2_SUB_GUN;
+import static com.antest1.kcanotify.KcaApiData.T2_TORPEDO;
 import static com.antest1.kcanotify.KcaApiData.T2_TORPEDO_BOMBER;
 import static com.antest1.kcanotify.KcaApiData.getKcShipDataById;
 import static com.antest1.kcanotify.KcaApiData.getUserItemStatusById;
@@ -47,17 +52,25 @@ import static com.antest1.kcanotify.KcaConstants.FORMATION_ECH;
 import static com.antest1.kcanotify.KcaConstants.FORMATION_LAB;
 import static com.antest1.kcanotify.KcaConstants.FORMATION_LAH;
 import static java.lang.Math.floor;
+import static java.lang.Math.signum;
 import static java.lang.Math.sqrt;
 
 import android.content.Context;
 
+import androidx.annotation.DrawableRes;
+
+import com.google.common.base.Predicate;
+import com.google.common.collect.Comparators;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
 
@@ -414,6 +427,7 @@ public class KcCalc {
     // endregion
 
     // region ASW
+
     /**
      * check the ship can Opening Anti-Submarine Warfare Shelling (対潜先制爆雷攻撃)
      *
@@ -585,18 +599,197 @@ public class KcCalc {
 
     // endregion
 
-    public static final class NightCI {
+    // region Night CI
 
-        public NightCI(
+    // region Night CI Types
+    // constants for enum NightCI, it's moved here to avoid illegal forward reference error...
+    private static final Predicate<Integer> pred_all = stype -> true;
+    private static final Predicate<Integer> pred_dd = stype -> true;
+    private static final Predicate<Integer> pred_ss = stype -> true;
 
-        )
+    private static final Predicate<JsonObject> pred_radar = predByType2(T2_RADAR_SMALL, T2_RADAR_LARGE, T2_RADER_LARGE_II);
+    private static final Predicate<JsonObject> pred_los = itemData -> pred_radar.apply(itemData) && itemData.get("saku").getAsInt() >= 5;
+    private static final Predicate<JsonObject> pred_sl = predByType2(T2_SHIP_PERSONNEL);
+    private static final Predicate<JsonObject> pred_ts_sl = predById(412);
+    private static final Predicate<JsonObject> pred_drum = predByType2(T2_DRUM_CAN);
+    private static final Predicate<JsonObject> pred_ss_radar = predByType2(T2_SUBMARINE_RADER);
+    private static final Predicate<JsonObject> pred_late_model = itemData -> isLateModelTorpedo(itemData.get("id").getAsInt());
+
+    @DrawableRes private static final int ic_torp = R.mipmap.item_5;
+    @DrawableRes private static final int ic_gun_s = R.mipmap.item_1;
+    @DrawableRes private static final int ic_gun_m = R.mipmap.item_2;
+    @DrawableRes private static final int ic_sub_gun = R.mipmap.item_4;
+    @DrawableRes private static final int ic_radar = R.mipmap.item_11;
+    @DrawableRes private static final int ic_lookouts = R.mipmap.item_32;
+    @DrawableRes private static final int ic_drum = R.mipmap.item_25;
+    @DrawableRes private static final int ic_ss_radar = R.mipmap.item_42;
+
+    private static Predicate<JsonObject> predById(int... id) {
+        return itemData -> {
+            require(itemData, "id");
+            return any(itemData.get("id").getAsInt(), id);
+        };
     }
+
+    private static Predicate<JsonObject> predByType2(int... type2) {
+        return itemData -> {
+            require(itemData, "type");
+            return any(itemData.getAsJsonArray("type").get(2).getAsInt(), type2);
+        };
+    }
+
+    private static boolean isMainGun(int type2) {
+        return any(type2, T2_GUN_SMALL, T2_GUN_MEDIUM, T2_GUN_LARGE, T2_GUN_LARGE_II);
+    }
+
+    private static boolean isSubGun(int type2) {
+        return any(type2, T2_SUB_GUN);
+    }
+
+    private static boolean isTorpedo(int type2) {
+        return type2 == T2_TORPEDO || type2 == T2_SS_TORPEDO;
+    }
+
+    private static boolean isLateModelTorpedo(int item_id) {
+        return any(
+                item_id,
+                213, // 後期型艦首魚雷(6門)
+                214, // 熟練聴音員+後期型艦首魚雷(6門)
+                383, // 後期型53cm艦首魚雷(8門)
+                441, // 21inch艦首魚雷発射管6門(後期型)
+                443 // 潜水艦後部魚雷発射管4門(後期型)
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    public enum NightCITypes {
+        GunGunGun(pred_all, equip(3, 0, 0),
+                2.0, ic_gun_m, ic_gun_m, ic_gun_m),
+        GunGunSGun(pred_all, equip(2, 1, 0),
+                1.75, ic_gun_m, ic_gun_m, ic_sub_gun),
+        TorpTorp(pred_all, equip(0, 0, 1),
+                1.5, ic_torp, ic_torp, ic_torp),
+        GunTorp(pred_all, equip(1, 0, 1),
+                1.3, ic_torp, ic_torp, ic_gun_m),
+        DD_GunTorpRadar(pred_dd, equip(1, 0, 1, pred_los),
+                1.3, ic_gun_s, ic_torp, ic_radar),
+        DD_TorpSLRadar(pred_dd, equip(0, 0, 1, pred_sl, pred_los),
+                1.2, ic_torp, ic_lookouts, ic_radar),
+        DD_TorpTSSLTorp(pred_dd, equip(0, 0, 2, pred_ts_sl),
+                1.5, ic_torp, ic_lookouts, ic_torp),
+        DD_TorpDrumSL(pred_dd, equip(0, 0, 1, pred_ts_sl, pred_drum),
+                1.3, ic_drum, ic_lookouts, ic_torp),
+        SS_LMTorpRadar(pred_ss, equip(0, 0, 1, pred_late_model, pred_ss_radar),
+                1.75, ic_ss_radar, ic_torp, ic_torp),
+        SS_LMTorpTorp(pred_ss, equip(0, 0, 2, pred_late_model, pred_late_model),
+                1.6, ic_torp, ic_torp, ic_torp);
+
+        private static Predicate<SlotItemList> equip(int main_guns, int sub_guns, int torpedos, Predicate<JsonObject>... others) {
+
+            return slots -> {
+                int missingMinGuns = main_guns;
+                int missingSubGuns = sub_guns;
+                int missingTorpedos = torpedos;
+                List<Predicate<JsonObject>> missingConds = Lists.newArrayList(others);
+
+                for (JsonObject itemData : slots.query("", "id,type,saku")) {
+                    int type2 = itemData.getAsJsonArray("type").get(2).getAsInt();
+
+                    if (isMainGun(type2)) missingMinGuns--;
+                    if (isSubGun(type2)) missingSubGuns--;
+                    if (isTorpedo(type2)) missingTorpedos--;
+
+                    Iterables.removeIf(missingConds, cond -> cond.apply(itemData));
+                }
+
+                return missingMinGuns <= 0 && missingSubGuns <= 0 && missingTorpedos <= 0 && missingConds.isEmpty();
+            };
+        }
+
+
+        private final Predicate<Integer> pred_stype;
+        private final Predicate<SlotItemList> pred_equip;
+        private final double dmg_factor;
+        @DrawableRes private final int[] ci_icons;
+
+        NightCITypes(Predicate<Integer> stype, Predicate<SlotItemList> equip, double dmg, @DrawableRes int... ci_icons) {
+            this.pred_stype = stype;
+            this.pred_equip = equip;
+            this.dmg_factor = dmg;
+            this.ci_icons = ci_icons;
+        }
+
+        public boolean isTriggerable(JsonObject userData, JsonObject kcData) {
+            require(userData, "slot", "slot_ex");
+            require(kcData, "stype");
+            return isTriggerable(kcData.get("stype").getAsInt(), slots(userData));
+        }
+
+        public boolean isTriggerable(int stype, SlotItemList slots) {
+            return pred_stype.apply(stype) && pred_equip.apply(slots);
+        }
+
+        public final double getDamageFactor() {
+            return dmg_factor;
+        }
+
+        @DrawableRes
+        public final int[] getCutInsIcons() {
+            return ci_icons;
+        }
+
+        /**
+         * 主魚電＞魚見電＞魚魚水＞魚ド水＞(魚魚)<br>
+         * this list is sorted as same as the trigger priority of the destroyer CI
+         */
+        private static final List<NightCITypes> DD_CI;
+        static {
+            List<NightCITypes> dd_ci = Lists.newArrayList(
+                    DD_GunTorpRadar, DD_TorpSLRadar, DD_TorpTSSLTorp, DD_TorpDrumSL
+            );
+            DD_CI = Collections.unmodifiableList(dd_ci);
+        }
+
+        /**
+         * this list is not contain destroyer CI and
+         * sorted as same as the trigger priority of the night CI
+         */
+        private static final List<NightCITypes> OTHER_CI;
+
+        static {
+            List<NightCITypes> other_ci = Arrays.asList(values());
+            other_ci.removeAll(DD_CI);
+            Collections.sort(other_ci, (a, b) -> (int) signum(a.dmg_factor - b.dmg_factor));
+            OTHER_CI = Collections.unmodifiableList(other_ci);
+        }
+
+        /**
+         * @return an unmodifiable list. empty if no cut-ins can be triggered
+         */
+        public static List<NightCITypes> getAllTriggerableCI(int stype, SlotItemList slots) {
+            List<NightCITypes> list = Lists.newArrayList();
+
+            if (stype == STYPE_DD) {
+                for (NightCITypes ci : Iterables.filter(DD_CI, ci -> ci.isTriggerable(stype, slots))) {
+                    list.add(ci);
+                }
+            }
+
+            for (NightCITypes ci : Iterables.filter(OTHER_CI, ci -> ci.isTriggerable(stype, slots))) {
+                list.add(ci);
+                break; // only trigger-able first cut-ins
+            }
+
+            return Collections.unmodifiableList(list);
+        }
+    }
+    // endregion
 
     /**
      * @param user_ship_id
      * @return
-     * @see <a href="https://wikiwiki.jp/kancolle/%E5%A4%9C%E6%88%A6#nightcutin1">夜戦</a>
-     * @see <a href="https://kancolle.fandom.com/wiki/Combat/Night_Battle">Night Battle</a>
+     * @see <a href="https://wikiwiki.jp/kancolle/%E5%A4%9C%E6%88%A6#nightcutin1">夜戦 (wikiwiki)</a>
+     * @see <a href="https://kancolle.fandom.com/wiki/Combat/Night_Battle">Night Battle ()</a>
      */
     public static double getNightCIRate(
             int user_ship_id,
@@ -606,48 +799,57 @@ public class KcCalc {
         int stype = getKcShipDataById(kc_ship_id, "stype").get("stype").getAsInt();
     }
 
+    private static boolean canNightAttack(JsonObject userData) {
+
+    }
+
+    private static boolean isLookouts(int type2) {
+        return type2 == T2_SHIP_PERSONNEL;
+    }
+
+    private static boolean isTSLookouts(int item_id) {
+        return item_id == 412;
+    }
+
+
     private static double getNightCIRate(double base, int bonus, int factor) {
         return (base + bonus) / factor;
     }
 
-    private static void can
+    public enum NightCIBonus {
+        Flagship(+15),
+        MiddleDamaged(+18),
+        FriendSearchLight(+7),
+        EnemySearchLight(-5),
+        FriendStarShell(+4),
+        EnemyStarShell(-10),
+        /**
+         * has skilled lookouts (熟練見張員)
+         */
+        SkilledLookouts(+5),
+        /**
+         * has torpedo squad skilled lookouts ()
+         */
+        TorpedoSquadLookouts(+9);
 
-    /**
-     * @param isFlagship              is the activator flagship?
-     * @param isDamaged               is the activator middle damaged?
-     * @param isFriendSearchLight     is friend fleet searchlight activated?
-     * @param isEnemySearchLight      is enemy fleet searchlight activated?
-     * @param isFriendStarShell       is friend fleet star-shell activated?
-     * @param isEnemyStarShell        is enemy fleet star-shell activated?
-     * @param hasSkilledLookouts      is the skilled lookouts (熟練見張員) equipped?
-     * @param hasTorpedoSquadLookouts is the torpedo squadron skilled lookouts (水雷戦隊熟練見張員) equipped?
-     * @return night ci bonus
-     */
-    private static int getNightCIBonus(
-            boolean isFlagship,
-            boolean isDamaged,
-            boolean isFriendSearchLight,
-            boolean isEnemySearchLight,
-            boolean isFriendStarShell,
-            boolean isEnemyStarShell,
-            boolean hasSkilledLookouts,
-            boolean hasTorpedoSquadLookouts
-    ) {
-        int bonus = 0;
-        if (isFlagship) bonus += 15;
-        if (isDamaged) bonus += 18;
-        if (isFriendSearchLight) bonus += 7;
-        if (isEnemySearchLight) bonus -= 5;
-        if (isFriendStarShell) bonus += 4;
-        if (isEnemyStarShell) bonus -= 10;
-        if (hasSkilledLookouts) bonus += 5;
-        if (hasTorpedoSquadLookouts) bonus += 9;
-        return bonus;
+        public final int bonus;
+
+        NightCIBonus(int bonus) {
+            this.bonus = bonus;
+        }
+    }
+
+    private static int getNightCIBonusTerm(EnumSet<NightCIBonus> bonuses) {
+        int sum_of_bonus = 0;
+        for (NightCIBonus bonus : bonuses) {
+            sum_of_bonus += bonus.bonus;
+        }
+        return sum_of_bonus;
     }
 
     /**
-     * @param lv   the level of the invoker
-     * @param luck the luck of the invoker
+     * @param lv   the level of the ship
+     * @param luck the luck of the ship
      * @return night ci term of formula
      */
     private static double getNightCITerm(int lv, int luck) {
@@ -657,4 +859,5 @@ public class KcCalc {
             return (double) floor(15 + 50 + sqrt(luck - 50) + 0.8 * sqrt(lv));
         }
     }
+    // endregion
 }
