@@ -4,11 +4,18 @@ import static com.antest1.kcanotify.KcaApiData.STYPE_AO;
 import static com.antest1.kcanotify.KcaApiData.STYPE_AV;
 import static com.antest1.kcanotify.KcaApiData.STYPE_BBV;
 import static com.antest1.kcanotify.KcaApiData.STYPE_CAV;
+import static com.antest1.kcanotify.KcaApiData.STYPE_CL;
+import static com.antest1.kcanotify.KcaApiData.STYPE_CLT;
+import static com.antest1.kcanotify.KcaApiData.STYPE_CT;
 import static com.antest1.kcanotify.KcaApiData.STYPE_CV;
 import static com.antest1.kcanotify.KcaApiData.STYPE_CVB;
 import static com.antest1.kcanotify.KcaApiData.STYPE_CVE;
 import static com.antest1.kcanotify.KcaApiData.STYPE_CVL;
+import static com.antest1.kcanotify.KcaApiData.STYPE_DD;
+import static com.antest1.kcanotify.KcaApiData.STYPE_DE;
+import static com.antest1.kcanotify.KcaApiData.T2_ANTISUB_PATROL;
 import static com.antest1.kcanotify.KcaApiData.T2_ANTI_AIR_DEVICE;
+import static com.antest1.kcanotify.KcaApiData.T2_AUTOGYRO;
 import static com.antest1.kcanotify.KcaApiData.T2_BOMBER;
 import static com.antest1.kcanotify.KcaApiData.T2_FIGHTER;
 import static com.antest1.kcanotify.KcaApiData.T2_GUN_LARGE;
@@ -20,8 +27,12 @@ import static com.antest1.kcanotify.KcaApiData.T2_RADAR_LARGE;
 import static com.antest1.kcanotify.KcaApiData.T2_RADAR_SMALL;
 import static com.antest1.kcanotify.KcaApiData.T2_RADER_LARGE_II;
 import static com.antest1.kcanotify.KcaApiData.T2_SANSHIKIDAN;
+import static com.antest1.kcanotify.KcaApiData.T2_SEA_BOMBER;
 import static com.antest1.kcanotify.KcaApiData.T2_SEA_SCOUT;
+import static com.antest1.kcanotify.KcaApiData.T2_SONAR;
+import static com.antest1.kcanotify.KcaApiData.T2_SONAR_LARGE;
 import static com.antest1.kcanotify.KcaApiData.T2_SUB_GUN;
+import static com.antest1.kcanotify.KcaApiData.T2_TORPEDO_BOMBER;
 import static com.antest1.kcanotify.KcaApiData.getKcShipDataById;
 import static com.antest1.kcanotify.KcaApiData.getUserItemStatusById;
 import static com.antest1.kcanotify.KcaApiData.getUserShipDataById;
@@ -40,14 +51,29 @@ import static java.lang.Math.sqrt;
 
 import android.content.Context;
 
+import com.google.common.collect.Iterables;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+
+// TODO: replace all "slot_ex" with "exslot"
+
+/**
+ * all hard-coded ids are copied from @kcwiki/kancolle-data
+ *
+ * @see <a href="https://github.com/kcwiki/kancolle-data/blob/master/api/api_start2.json">@kcwiki/kancolle-data</a>
+ */
 public class KcCalc {
 
     private static boolean isInitialized = false;
     private static Gson gson = new Gson();
 
+    // region common
     public static void init(Context context) {
 
         isInitialized = true;
@@ -57,8 +83,120 @@ public class KcCalc {
         if (!isInitialized) throw new IllegalStateException("KcCalc has not been initialized");
     }
 
-    // region generic anti-air calculation
+    /**
+     * check json object {@code json} contains all of {@code keys}
+     *
+     * @param json json object to check
+     * @param keys keys to check
+     * @throws IllegalArgumentException if json is null or there are missing keys
+     */
+    private static void require(JsonObject json, String... keys) {
+        if (json == null) {
+            throw new IllegalArgumentException("json is null");
+        }
 
+        List<String> missing = null;
+        for (String key : keys) {
+            if (!json.has(key)) {
+                missing = missing != null ? missing : new ArrayList<>();
+                missing.add(key);
+            }
+        }
+
+        if (missing != null && !missing.isEmpty() /* always */) {
+            String msg = "required keys missing, missing: " + missing + ", "
+                    + "required: " + Arrays.toString(keys) + ", "
+                    + "json: " + json;
+            throw new IllegalArgumentException(msg);
+        }
+    }
+
+    private static boolean any(int x, int... args) {
+        for (int y : args) {
+            if (x == y) return true;
+        }
+        return false;
+    }
+
+    /**
+     * @param userData required: "slot", "slot_ex"
+     * @return an unmodifiable id list that iterates for each slot and slot_ex
+     */
+    private static SlotItemList slots(JsonObject userData) {
+
+        return new SlotItemList(userData);
+    }
+
+    /**
+     * @param userData     required: "slot", "slot_ex"
+     * @param userDataKeys comma separated keys to extract from user/member data
+     * @param kcDataKeys   comma separated keys to extract from kc/master data
+     * @return an unmodifiable json list, skips id == -1 (empty slot) and some error occurred. <br>
+     * contains null when {@code KcaApiData#getUserItemStatusById(int, String, String)} returns null.
+     * @see KcaApiData#getUserItemStatusById(int, String, String)
+     */
+    private static Iterable<JsonObject> slots(JsonObject userData, String userDataKeys, String kcDataKeys) {
+
+        return slots(userData).query(userDataKeys, kcDataKeys);
+    }
+
+    public static final class SlotItemList extends AbstractList<Integer> {
+
+        private final int[] slot;
+        private final int slot_ex;
+
+        /**
+         * @param userData required: "slot", "slot_ex"
+         */
+        public SlotItemList(JsonObject userData) {
+            slot = userData.has("slot")
+                    ? gson.fromJson(userData.getAsJsonArray("slot"), int[].class)
+                    : new int[0];
+            slot_ex = userData.has("slot_ex") ? userData.get("slot_ex").getAsInt() : 0 /* not opened */;
+        }
+
+        @Override
+        public Integer get(int i) {
+            if (i < slot.length) return slot[i];
+            if (slot_ex != 0) return slot_ex;
+            throw new IndexOutOfBoundsException();
+        }
+
+        @Override
+        public int size() {
+            return slot.length + (slot_ex != 0 ? 1 : 0 /* not opened */);
+        }
+
+        public Iterable<Integer> noEmpty() {
+            return Iterables.filter(this, id -> id != -1);
+        }
+
+        public Iterable<JsonObject> query(String userDataKeys, String kcDataKeys) {
+            return Iterables.transform(noEmpty(), id -> getUserItemStatusById(id, userDataKeys, kcDataKeys));
+        }
+
+        /**
+         * @return true if any slot item matches to one of types
+         */
+        public boolean any(int... types) {
+            return Iterables.any(query("", "type"), item -> KcCalc.any(item.get("type").getAsInt(), types));
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder("SlotItemList [");
+            for (Iterator<Integer> iter = iterator(); iter.hasNext(); ) {
+                int item_id = iter.next();
+                sb.append(item_id != -1 ? String.valueOf(item_id) : "empty");
+                if (iter.hasNext()) sb.append(", ");
+            }
+            return sb.append("]").toString();
+        }
+    }
+    // endregion
+
+    // region AA
+    // region generic anti-air calculation
     public static double getAdjustedAA(int user_ship_id) {
         return getAdjustedAA(getUserShipDataById(user_ship_id, "slot,slot_ex,tyku"));
     }
@@ -68,23 +206,19 @@ public class KcCalc {
      *
      * @param userData required: "slot", "slot_ex", "tyku",
      * @return adjusted AA score
+     * @see <a href="https://wikiwiki.jp/kancolle/%E5%AF%BE%E7%A9%BA%E7%A0%B2%E7%81%AB#AntiAircraft">対空砲火(wikiwiki)</a>
+     * @see <a href="https://kancolle.fandom.com/wiki/Combat/Aerial_Combat#System_Mechanics">Aerial Combat Stage 2(fandom)</a>
+     * @see <a href="https://en.kancollewiki.net/Aerial_Combat#Adjusted_Anti-Air">Adjusted Anti-Air(kancollewiki)</a>
      */
     public static double getAdjustedAA(JsonObject userData) {
-        int[] slot = gson.fromJson(userData.get("slot"), int[].class);
-        int slot_ex = userData.get("slot_ex").getAsInt();
-        int ship_aa = userData.get("tyku").getAsInt();
+        require(userData, "slot", "slot_ex", "tyku");
 
         // aaa means adjusted anti-air value
-        double aaa_score = ship_aa;
+        double aaa_score = userData.get("tyku").getAsInt();
 
         boolean has_item = false;
-        for (int i = 0; i < slot.length + 1; i++) {
-            int item_id = (i < slot.length) ? slot[i] : slot_ex;
-
-            if (item_id == -1) continue;
+        for (JsonObject itemData : slots(userData, "level", "type,tyku")) {
             has_item = true;
-
-            JsonObject itemData = getUserItemStatusById(item_id, "level", "type,tyku");
             if (itemData == null) continue;
 
             int type2 = itemData.getAsJsonArray("type").get(2).getAsInt(); // for type name
@@ -97,6 +231,7 @@ public class KcCalc {
             aaa_score += itemFactor * item_aa + improvementFactor * sqrt(level);
         }
 
+        // round down to n or 2n
         int a = has_item ? 2 : 1;
         return a * floor(aaa_score / a);
     }
@@ -124,10 +259,14 @@ public class KcCalc {
 
     /**
      * Calculate fleet anti-air score (艦隊防空)
-     * @param fleet user ship id list of the fleet
+     *
+     * @param fleet     user ship id list of the fleet
      * @param formation the formation
-     * @see KcaConstants#FORMATION_LAH
      * @return fleet aa score
+     * @see <a href="https://wikiwiki.jp/kancolle/%E5%AF%BE%E7%A9%BA%E7%A0%B2%E7%81%AB#AntiAircraft">対空砲火(wikiwiki)</a>
+     * @see <a href="https://kancolle.fandom.com/wiki/Combat/Aerial_Combat#System_Mechanics">Aerial Combat Stage 2(fandom)</a>
+     * @see <a href="https://en.kancollewiki.net/Aerial_Combat#Adjusted_Anti-Air">Adjusted Anti-Air(kancollewiki)</a>
+     * @see KcaConstants#FORMATION_LAH
      */
     public static double getFleetAA(int[] fleet, int formation) {
 
@@ -136,17 +275,9 @@ public class KcCalc {
         for (int user_ship_id : fleet) {
             JsonObject userData = getUserShipDataById(user_ship_id, "slot,slot_ex");
 
-            int[] slot = gson.fromJson(userData.get("slot"), int[].class);
-            int slot_ex = userData.get("slot_ex").getAsInt();
-
             double aa_bonus = 0.0;
 
-            for (int i = 0; i < slot.length + 1; i++) {
-                int user_item_id = (i < slot.length) ? slot[i] : slot_ex;
-
-                if (user_item_id == -1) continue;
-
-                JsonObject itemData = getUserItemStatusById(user_item_id, "level", "id,type,tyku");
+            for (JsonObject itemData : slots(userData, "level", "id,type,tyku")) {
                 if (itemData == null) continue;
 
                 int kc_item_id = itemData.get("id").getAsInt();
@@ -178,9 +309,8 @@ public class KcCalc {
         if (type3 == 16 /* AA_GUN */ || type2 == T2_ANTI_AIR_DEVICE) return 0.35;
         if (kc_item_id == 9 /* 46cm三連装砲 */) return 0.25;
 
-        if (type2 == T2_GUN_SMALL || type2 == T2_GUN_MEDIUM || type2 == T2_GUN_LARGE
-                || type2 == T2_GUN_LARGE_II || type2 == T2_SUB_GUN || type2 == T2_MACHINE_GUN
-                || type2 == T2_FIGHTER || type2 == T2_BOMBER || type2 == T2_SEA_SCOUT) {
+        if (any(type2, T2_GUN_SMALL, T2_GUN_MEDIUM, T2_GUN_LARGE, T2_GUN_LARGE_II, T2_SUB_GUN,
+                T2_MACHINE_GUN, T2_FIGHTER, T2_BOMBER, T2_SEA_SCOUT)) {
             return 0.2;
         }
 
@@ -234,44 +364,35 @@ public class KcCalc {
 
     /**
      * Calculate the probability of the Anti-Air Propellant Barrage (対空噴進弾幕)
+     * <p>
+     * trigger_rate = (0.9 * luck + Adjusted_AA) / 281 + launchers_bonus + ise_class_bonus
+     * launchers_bonus = (n - 1) * 0.15 // where n is number of equipped launcher
+     * ise_class_bonus = 25 if Ise-Class (Hyuga-Kai, Kaini, Ise-Kai, Kaini)
      *
-     * @param user_ship_id
-     * @return
+     * @param user_ship_id user/member ship id
+     * @return the Anti-Air Propellant Barrage trigger rate
+     * @see <a href="https://wikiwiki.jp/kancolle/12cm30%E9%80%A3%E8%A3%85%E5%99%B4%E9%80%B2%E7%A0%B2%E6%94%B9%E4%BA%8C#n67c3285">12cm30連装噴進砲改二(wikiwiki)</a>
+     * @see <a href="https://kancolle.fandom.com/wiki/12cm_30-tube_Rocket_Launcher_Kai_Ni">12cm 30-tube Rocket Launcher Kai Ni(fandom)</a>
+     * @see <a href="https://en.kancollewiki.net/Aerial_Combat#Rocket_Barrage">Anti-Air Rocket Barrage(kancollewiki)</a>
      */
-    public static double getAAPBRate(int user_ship_id) {
-        JsonObject userData = getUserShipDataById(user_ship_id, "ship_id,slot,slot_ex,luck,tyku,");
+    public static double getAAPBTriggerRate(int user_ship_id) {
+        JsonObject userData = getUserShipDataById(user_ship_id, "ship_id,slot,slot_ex,luck,tyku");
         int kc_ship_id = userData.get("ship_id").getAsInt();
         JsonObject kcData = getKcShipDataById(kc_ship_id, "stype,ctype");
 
         if (kcData == null) return 0.0;
 
-        switch (kcData.get("stype").getAsInt()) {
-            case STYPE_BBV: // 航空戦艦
-            case STYPE_CAV: // 航空巡洋艦
-            case STYPE_CVL: // 軽空母
-            case STYPE_CV: // 正規空母
-            case STYPE_CVB: // 正規空母
-            case STYPE_CVE: // 護衛空母
-            case STYPE_AV: // 水上機母艦
-                break;
-            default:
-                return 0.0;
+        if (!canTriggerAAPB(kcData.get("stype").getAsInt())) {
+            return 0.0;
         }
 
         boolean isIseClass = kcData.get("ctype").getAsInt() == 2; /* Ise-class */
 
-        int[] slot = gson.fromJson(userData.get("slot"), int[].class);
-        int slot_ex = userData.get("slot_ex").getAsInt();
-
         int launchers = 0;
-        for (int i = 0; i < slot.length + 1; i++) {
-            int user_item_id = (i < slot.length) ? slot[i] : slot_ex;
+        for (JsonObject itemData : slots(userData, "", "id")) {
 
-            if (user_item_id == -1) continue;
-
-            int kc_item_id = getUserItemStatusById(user_item_id, "", "id").get("id").getAsInt();
-
-            if (kc_item_id == 274 /* 12cm30連想噴進砲改二 */) launchers++;
+            if (itemData != null && itemData.get("id").getAsInt() == 274 /* 12cm30連想噴進砲改二 */)
+                launchers++;
         }
 
         if (launchers == 0) return 0.0;
@@ -279,8 +400,18 @@ public class KcCalc {
         int luck = userData.get("luck").getAsInt();
         double adjustedAA = getAdjustedAA(userData);
 
-        return ((0.9 * luck + adjustedAA) / 281 + (launchers - 1) * 15 + (isIseClass ? 25 : 0)) / 100.0;
+        return (0.9 * luck + adjustedAA) / 281 + (launchers - 1) * 0.15 + (isIseClass ? 0.25 : 0);
     }
+
+    private static boolean canTriggerAAPB(int stype) {
+        // BBV: 航空戦艦, CAV: 航空巡洋艦
+        // CVL: 軽空母, CV: 正規空母
+        // CVB: 正規空母, CVE: 護衛空母
+        // AV: 水上機母艦
+        return any(stype, STYPE_BBV, STYPE_CAV, STYPE_CVL, STYPE_CV, STYPE_CVB, STYPE_CVE, STYPE_AV);
+    }
+
+    // endregion
 
     public static boolean canOpeningASW() {
 
