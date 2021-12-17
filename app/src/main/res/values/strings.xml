@@ -805,8 +805,19 @@ https://github.com/antest1/kcanotify/blob/master/app/src/main/res/values/strings
     <string name="text_api_leng_3">L</string>
     <string name="text_api_leng_4">VL</string>
 
-    <string name="text_api_houm2">ABM</string>
-    <string name="text_api_houk2">INT</string>
+    <string name="night_ci_ggg">GGG</string>
+    <string name="night_ci_ggs">GGS</string>
+    <string name="night_ci_ttt">TT</string>
+    <string name="night_ci_ttg">TG</string>
+    <string name="night_ci_dd_gtr">TGR</string>
+    <string name="night_ci_dd_tlr">TLR</string>
+    <string name="night_ci_dd_tlt">TLT</string>
+    <string name="night_ci_dd_dlt">DLT</string>
+    <string name="night_ci_ss_ssr">SR</string>
+    <string name="night_ci_ss_sss">SS</string>
+
+    <string name="text_api_houm2">ABM</string>
+    <string name="text_api_houk2">INT</string>
     <string name="text_api_cost">COST</string>
     <string name="text_api_distance">DIST</string>
 

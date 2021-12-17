@@ -58,11 +58,13 @@ import static java.lang.Math.sqrt;
 import android.content.Context;
 
 import androidx.annotation.DrawableRes;
+import androidx.annotation.StringRes;
 
 import com.google.common.base.Predicate;
 import com.google.common.collect.Comparators;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
@@ -73,6 +75,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 // TODO: replace all "slot_ex" with "exslot"
 
@@ -373,6 +376,7 @@ public class KcCalc {
      */
     public static double getAACIRate() {
         // TODO
+        throw new Error("not implemented");
     }
 
     /**
@@ -663,26 +667,26 @@ public class KcCalc {
 
     @SuppressWarnings("unchecked")
     public enum NightCITypes {
-        GunGunGun(pred_all, equip(3, 0, 0),
-                2.0, ic_gun_m, ic_gun_m, ic_gun_m),
-        GunGunSGun(pred_all, equip(2, 1, 0),
-                1.75, ic_gun_m, ic_gun_m, ic_sub_gun),
-        TorpTorp(pred_all, equip(0, 0, 1),
-                1.5, ic_torp, ic_torp, ic_torp),
-        GunTorp(pred_all, equip(1, 0, 1),
-                1.3, ic_torp, ic_torp, ic_gun_m),
-        DD_GunTorpRadar(pred_dd, equip(1, 0, 1, pred_los),
-                1.3, ic_gun_s, ic_torp, ic_radar),
-        DD_TorpSLRadar(pred_dd, equip(0, 0, 1, pred_sl, pred_los),
-                1.2, ic_torp, ic_lookouts, ic_radar),
-        DD_TorpTSSLTorp(pred_dd, equip(0, 0, 2, pred_ts_sl),
-                1.5, ic_torp, ic_lookouts, ic_torp),
-        DD_TorpDrumSL(pred_dd, equip(0, 0, 1, pred_ts_sl, pred_drum),
-                1.3, ic_drum, ic_lookouts, ic_torp),
-        SS_LMTorpRadar(pred_ss, equip(0, 0, 1, pred_late_model, pred_ss_radar),
-                1.75, ic_ss_radar, ic_torp, ic_torp),
-        SS_LMTorpTorp(pred_ss, equip(0, 0, 2, pred_late_model, pred_late_model),
-                1.6, ic_torp, ic_torp, ic_torp);
+        GunGunGun(140, pred_all, equip(3, 0, 0),
+                2.0, ic_gun_m, ic_gun_m, ic_gun_m, R.string.night_ci_ggg),
+        GunGunSGun(130, pred_all, equip(2, 1, 0),
+                1.75, ic_gun_m, ic_gun_m, ic_sub_gun, R.string.night_ci_ggs),
+        TorpTorp(122, pred_all, equip(0, 0, 1),
+                1.5, ic_torp, ic_torp, ic_torp, R.string.night_ci_ttt),
+        GunTorp(115, pred_all, equip(1, 0, 1),
+                1.3, ic_torp, ic_torp, ic_gun_m, R.string.night_ci_ttg),
+        DD_GunTorpRadar(115, pred_dd, equip(1, 0, 1, pred_los),
+                1.3, ic_gun_s, ic_torp, ic_radar, R.string.night_ci_dd_gtr),
+        DD_TorpSLRadar(140, pred_dd, equip(0, 0, 1, pred_sl, pred_los),
+                1.2, ic_torp, ic_lookouts, ic_radar, R.string.night_ci_dd_tlr),
+        DD_TorpTSSLTorp(124, pred_dd, equip(0, 0, 2, pred_ts_sl),
+                1.5, ic_torp, ic_lookouts, ic_torp, R.string.night_ci_dd_tlt),
+        DD_TorpDrumSL(120 /* TODO: unknown */, pred_dd, equip(0, 0, 1, pred_ts_sl, pred_drum),
+                1.3, ic_drum, ic_lookouts, ic_torp, R.string.night_ci_dd_dlt),
+        SS_LMTorpRadar(105, pred_ss, equip(0, 0, 1, pred_late_model, pred_ss_radar),
+                1.75, ic_ss_radar, ic_torp, ic_torp, R.string.night_ci_ss_ssr),
+        SS_LMTorpTorp(105 /* TODO: unknown */, pred_ss, equip(0, 0, 2, pred_late_model, pred_late_model),
+                1.6, ic_torp, ic_torp, ic_torp, R.string.night_ci_ss_sss);
 
         private static Predicate<SlotItemList> equip(int main_guns, int sub_guns, int torpedos, Predicate<JsonObject>... others) {
 
@@ -706,17 +710,22 @@ public class KcCalc {
             };
         }
 
-
+        private final int ci_term;
         private final Predicate<Integer> pred_stype;
         private final Predicate<SlotItemList> pred_equip;
         private final double dmg_factor;
         @DrawableRes private final int[] ci_icons;
+        @StringRes private final int ci_name;
 
-        NightCITypes(Predicate<Integer> stype, Predicate<SlotItemList> equip, double dmg, @DrawableRes int... ci_icons) {
+        NightCITypes(int ci_term, Predicate<Integer> stype, Predicate<SlotItemList> equip,
+                     double dmg, @DrawableRes int ic1, @DrawableRes int ic2, @DrawableRes int ic3,
+                     @StringRes int name) {
+            this.ci_term = ci_term;
             this.pred_stype = stype;
             this.pred_equip = equip;
             this.dmg_factor = dmg;
-            this.ci_icons = ci_icons;
+            this.ci_icons = new int[] { ic1, ic2, ic3 };
+            this.ci_name = name;
         }
 
         public boolean isTriggerable(JsonObject userData, JsonObject kcData) {
@@ -729,13 +738,46 @@ public class KcCalc {
             return pred_stype.apply(stype) && pred_equip.apply(slots);
         }
 
-        public final double getDamageFactor() {
+        public final double getDamageFactor(SlotItemList slots) {
+            if (this == DD_GunTorpRadar || this == DD_TorpSLRadar) {
+                int gun_d = 0;
+                boolean gun_d3 = false;
+                for (JsonObject itemData : slots.query("", "id")) {
+                    int item_id = itemData.get("id").getAsInt();
+                    if (item_id == 267) { // D型改二
+                        gun_d++;
+                    }
+                    if (item_id == 366) { // D型改三
+                        gun_d++;
+                        gun_d3 = true;
+                    }
+                }
+
+                double d_bonus = (gun_d >= 2) ? 1.4 : (gun_d >= 1) ? 1.25 : /* gun_d == 0 ? */ 1.0;
+                double d3_bonus = gun_d3 ? 1.05 : 1.0;
+                return dmg_factor * d_bonus * d3_bonus;
+            }
+
             return dmg_factor;
         }
 
+        public final int getCITerm() {
+            return ci_term;
+        }
+
         @DrawableRes
-        public final int[] getCutInsIcons() {
+        public final int[] getCIIcons() {
             return ci_icons;
+        }
+
+        public final String getCIName(Context context, boolean longForm) {
+            String str = context.getString(ci_name);
+            if (!str.contains("/")) return str;
+
+            String[] forms = context.getString(ci_name).split("/", 2);
+            if (forms.length <= 1) return str;
+
+            return forms[longForm ? 1 : 0];
         }
 
         /**
@@ -743,6 +785,7 @@ public class KcCalc {
          * this list is sorted as same as the trigger priority of the destroyer CI
          */
         private static final List<NightCITypes> DD_CI;
+
         static {
             List<NightCITypes> dd_ci = Lists.newArrayList(
                     DD_GunTorpRadar, DD_TorpSLRadar, DD_TorpTSSLTorp, DD_TorpDrumSL
@@ -786,21 +829,52 @@ public class KcCalc {
     // endregion
 
     /**
-     * @param user_ship_id
-     * @return
+     * @param user_ship_id user/member ship id
+     * @return a unmodifiable, ci_type to rate map. empty if no cut-ins triggerable
      * @see <a href="https://wikiwiki.jp/kancolle/%E5%A4%9C%E6%88%A6#nightcutin1">夜戦 (wikiwiki)</a>
      * @see <a href="https://kancolle.fandom.com/wiki/Combat/Night_Battle">Night Battle ()</a>
      */
-    public static double getNightCIRate(
-            int user_ship_id,
-            ) {
+    public static Map<NightCITypes, Double> getNightCIRate(int user_ship_id, EnumSet<NightCIBonus> bonuses) {
         JsonObject userData = getUserShipDataById(user_ship_id, "ship_id,lv,luck,slot,slot_ex");
         int kc_ship_id = userData.get("ship_id").getAsInt();
-        int stype = getKcShipDataById(kc_ship_id, "stype").get("stype").getAsInt();
+        JsonObject kcData = getKcShipDataById(kc_ship_id, "id,stype,houg,raig");
+        if (kcData == null) return Collections.emptyMap();
+
+        int lv = userData.get("lv").getAsInt();
+        int luck = userData.get("luck").getAsInt();
+        SlotItemList slots = slots(userData);
+        int stype = kcData.get("stype").getAsInt();
+
+        if (canNightAttack(kcData)) {
+            Map<NightCITypes, Double> map = Maps.newEnumMap(NightCITypes.class);
+
+            double base_term = getNightCITerm(lv, luck);
+            int bonus_term = getNightCIBonusTerm(bonuses);
+
+            List<NightCITypes> types = NightCITypes.getAllTriggerableCI(stype, slots);
+            for (NightCITypes type : types) {
+                map.put(type, getNightCIRate(base_term, bonus_term, type.ci_term));
+            }
+            return map;
+        }
+
+        // TODO: not implemented
+        return Collections.emptyMap();
     }
 
-    private static boolean canNightAttack(JsonObject userData) {
+    /**
+     * @param kcData required: "id", "houg", "raig"
+     * @return true if the ship can normal (not carrier) night attack
+     */
+    private static boolean canNightAttack(JsonObject kcData) {
+        require(kcData, "id", "houg", "raig");
+        int id = kcData.get("id").getAsInt();
+        int firepower = kcData.getAsJsonArray("houg").get(0).getAsInt();
+        int torpedo = kcData.getAsJsonArray("raig").get(0).getAsInt();
 
+        if (id == 707) return false; // Gambier Bay Mk.II, an exception
+
+        return firepower != 0 || torpedo != 0;
     }
 
     private static boolean isLookouts(int type2) {
@@ -810,7 +884,6 @@ public class KcCalc {
     private static boolean isTSLookouts(int item_id) {
         return item_id == 412;
     }
-
 
     private static double getNightCIRate(double base, int bonus, int factor) {
         return (base + bonus) / factor;

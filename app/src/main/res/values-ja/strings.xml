@@ -733,6 +733,19 @@
     <string name="text_api_leng_3">長</string>
     <string name="text_api_leng_4">超長</string>
 
+    <!-- separate with slash '/' to indicate long form -->
+    <!-- if not separated, use the same form for short and long form -->
+    <string name="night_ci_ggg">主主主</string>
+    <string name="night_ci_ggs">主主副</string>
+    <string name="night_ci_ttt">魚魚魚</string>
+    <string name="night_ci_ttg">魚魚主</string>
+    <string name="night_ci_dd_gtr">主魚電</string>
+    <string name="night_ci_dd_tlr">魚見電</string>
+    <string name="night_ci_dd_tlt">魚水魚</string>
+    <string name="night_ci_dd_dlt">ド水魚</string>
+    <string name="night_ci_ss_ssr">魚魚電/魚魚電 (後期魚雷･潜水艦電探)</string>
+    <string name="night_ci_ss_sss">魚魚魚/魚魚魚 (後期魚雷)</string>
+
     <string name="text_api_houm2">対爆</string>
     <string name="text_api_houk2">迎擊</string>
     <string name="text_api_cost">配置コスト</string>
