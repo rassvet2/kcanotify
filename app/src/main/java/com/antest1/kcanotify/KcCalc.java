@@ -58,13 +58,12 @@ import static java.lang.Math.sqrt;
 import android.content.Context;
 
 import androidx.annotation.DrawableRes;
+import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 
 import com.google.common.base.Predicate;
-import com.google.common.collect.Comparators;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
@@ -72,6 +71,7 @@ import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
@@ -80,14 +80,70 @@ import java.util.Map;
 // TODO: replace all "slot_ex" with "exslot"
 
 /**
- * all hard-coded ids are copied from @kcwiki/kancolle-data
+ * This class is a fat utility god (lol) class for various calculation of kancolle.
+ * <p>
+ * This class has following features:
+ * <ul>
+ *     <li>Adjusted Anti-Air (see: {@link KcCalc#getAdjustedAA(int)}, {@link KcCalc#getFleetAA(int[], int)})</li>
+ *     <li>AACI Trigger Rate (working) (see: {@link KcCalc#getAACIRate()})</li>
+ *     <li>AAPB Trigger Rate (see: {@link KcCalc#getAAPBTriggerRate(int)})</li>
+ *     <li>Yes/No of Opening ASW (see: {@link KcCalc#canOpeningASW(int)})</li>
+ *     <li>Night Cut-ins Rate (see: {@link KcCalc#getNightCIRate(int, EnumSet)}</li>
+ * </ul>
+ * <p>
+ * Almost code are hard-coded and conditions are got scattered to whole code.
+ * When a new ship who has special features has been added, she must be added to this code.
+ * Following is the memo... :
+ * <ul>
+ *     <li>
+ *         New ship types can now trigger the AAPB<br>
+ *         →　update {@link KcCalc#canTriggerAAPB(int)}
+ *     </li>
+ *     <li>
+ *         New ship classes are now eligible for AAPB ship class bonuses<br>
+ *         → update {@code isIseClass} in {@link KcCalc#getAAPBTriggerRate(JsonObject, JsonObject)}
+ *     </li>
+ *     <li>
+ *         New ships can now innately OASW
+ *         → update {@link KcCalc#canAlwaysOASW(int)}
+ *     </li>
+ *     <li>
+ *         New OASW conditions are added or changed
+ *         → add new {@code if} block in the {@link KcCalc#canOpeningASW(JsonObject, JsonObject)}
+ *     </li>
+ *     <li>
+ *         New Taiyou class ship or attacker CVL (e.g. Suzuya/Kumano Kou Kai-ni) is added
+ *         → add to {@link KcCalc#isTaiyouClass(int)} or{@link KcCalc#isAttackerCVL(int)}
+ *     </li>
+ *     <li>
+ *         New NightCI types or AACI types are added
+ *         → add to {@link KcCalc.NightCITypes} or TODO: [AACI Type Class Here]
+ *     </li>
+ *     <li>
+ *         New night battle exception (e.g. Gambier Bay Mk.II can not engage night battle even has firepower)
+ *         → add new {@code if} block in {@link KcCalc#getNightCIRate(JsonObject, JsonObject, EnumSet)}
+ *     </li>
+ *     <li>
+ *         some NightCI factors has been proved
+ *         → update {@link KcCalc.NightCITypes}
+ *     </li>
+ *     <li>
+ *         New items are added:
+ *         <ul>
+ *             <li>Aircraft → {@link KcCalc#isAircraftOASWable(JsonObject, boolean, int)}</li>
+ *             <li>Helicopter → {@link KcCalc#isAutogyro(JsonObject)}</li>
+ *         <ul/>
+ *     </li>
+ * </ul>
+ * <p>
+ * All hard-coded ids are copied from @kcwiki/kancolle-data
  *
  * @see <a href="https://github.com/kcwiki/kancolle-data/blob/master/api/api_start2.json">@kcwiki/kancolle-data</a>
  */
 public class KcCalc {
 
     private static boolean isInitialized = false;
-    private static Gson gson = new Gson();
+    private static final Gson gson = new Gson();
 
     // region common
     public static void init(Context context) {
@@ -195,7 +251,10 @@ public class KcCalc {
          * @return true if any slot item matches to one of types
          */
         public boolean any(int... types) {
-            return Iterables.any(query("", "type"), item -> KcCalc.any(item.get("type").getAsInt(), types));
+            return Iterables.any(
+                    query("", "type"),
+                    item -> KcCalc.any(item.getAsJsonArray("type").get(2).getAsInt(), types)
+            );
         }
 
         @Override
@@ -214,23 +273,23 @@ public class KcCalc {
     // region AA
     // region generic anti-air calculation
     public static double getAdjustedAA(int user_ship_id) {
-        return getAdjustedAA(getUserShipDataById(user_ship_id, "slot,slot_ex,tyku"));
+        return getAdjustedAA(getUserShipDataById(user_ship_id, "slot,slot_ex,taiku"));
     }
 
     /**
      * Calculate adjusted anti-air score (加重対空)
      *
-     * @param userData required: "slot", "slot_ex", "tyku",
+     * @param userData required: "slot", "slot_ex", "taiku",
      * @return adjusted AA score
      * @see <a href="https://wikiwiki.jp/kancolle/%E5%AF%BE%E7%A9%BA%E7%A0%B2%E7%81%AB#AntiAircraft">対空砲火(wikiwiki)</a>
      * @see <a href="https://kancolle.fandom.com/wiki/Combat/Aerial_Combat#System_Mechanics">Aerial Combat Stage 2(fandom)</a>
      * @see <a href="https://en.kancollewiki.net/Aerial_Combat#Adjusted_Anti-Air">Adjusted Anti-Air(kancollewiki)</a>
      */
     public static double getAdjustedAA(JsonObject userData) {
-        require(userData, "slot", "slot_ex", "tyku");
+        require(userData, "slot", "slot_ex", "taiku");
 
         // aaa means adjusted anti-air value
-        double aaa_score = userData.get("tyku").getAsInt();
+        double aaa_score = userData.getAsJsonArray("taiku").get(0).getAsInt();
 
         boolean has_item = false;
         for (JsonObject itemData : slots(userData, "level", "type,tyku")) {
@@ -379,25 +438,31 @@ public class KcCalc {
         throw new Error("not implemented");
     }
 
+    public static double getAAPBTriggerRate(int user_ship_id) {
+        JsonObject userData = getUserShipDataById(user_ship_id, "ship_id,slot,slot_ex,lucky,taiku");
+        int kc_ship_id = userData.get("ship_id").getAsInt();
+        JsonObject kcData = getKcShipDataById(kc_ship_id, "stype,ctype");
+        if (kcData == null) return 0.0;
+        return getAAPBTriggerRate(userData, kcData);
+    }
+
     /**
      * Calculate the probability of the Anti-Air Propellant Barrage (対空噴進弾幕)
-     * <p>
+     * <br>
      * trigger_rate = (0.9 * luck + Adjusted_AA) / 281 + launchers_bonus + ise_class_bonus
      * launchers_bonus = (n - 1) * 0.15 // where n is number of equipped launcher
      * ise_class_bonus = 25 if Ise-Class (Hyuga-Kai, Kaini, Ise-Kai, Kaini)
      *
-     * @param user_ship_id user/member ship id
+     * @param userData required: "ship_id", "slot", "slot_ex", "lucky", "taiku"
+     * @param kcData   required: "stype", "ctype"
      * @return the Anti-Air Propellant Barrage trigger rate
      * @see <a href="https://wikiwiki.jp/kancolle/12cm30%E9%80%A3%E8%A3%85%E5%99%B4%E9%80%B2%E7%A0%B2%E6%94%B9%E4%BA%8C#n67c3285">12cm30連装噴進砲改二(wikiwiki)</a>
      * @see <a href="https://kancolle.fandom.com/wiki/12cm_30-tube_Rocket_Launcher_Kai_Ni">12cm 30-tube Rocket Launcher Kai Ni(fandom)</a>
      * @see <a href="https://en.kancollewiki.net/Aerial_Combat#Rocket_Barrage">Anti-Air Rocket Barrage(kancollewiki)</a>
      */
-    public static double getAAPBTriggerRate(int user_ship_id) {
-        JsonObject userData = getUserShipDataById(user_ship_id, "ship_id,slot,slot_ex,luck,tyku");
-        int kc_ship_id = userData.get("ship_id").getAsInt();
-        JsonObject kcData = getKcShipDataById(kc_ship_id, "stype,ctype");
-
-        if (kcData == null) return 0.0;
+    public static double getAAPBTriggerRate(JsonObject userData, JsonObject kcData) {
+        require(userData, "ship_id", "slot", "slot_ex", "lucky", "taiku");
+        require(kcData, "stype", "ctype");
 
         if (!canTriggerAAPB(kcData.get("stype").getAsInt())) {
             return 0.0;
@@ -414,7 +479,7 @@ public class KcCalc {
 
         if (launchers == 0) return 0.0;
 
-        int luck = userData.get("luck").getAsInt();
+        int luck = userData.getAsJsonArray("lucky").get(0).getAsInt();
         double adjustedAA = getAdjustedAA(userData);
 
         return (0.9 * luck + adjustedAA) / 281 + (launchers - 1) * 0.15 + (isIseClass ? 0.25 : 0);
@@ -431,25 +496,32 @@ public class KcCalc {
     // endregion
 
     // region ASW
+    public static boolean canOpeningASW(int user_ship_id) {
+        JsonObject userData = getUserShipDataById(user_ship_id, "ship_id,slot,slot_ex,taisen");
+        int kc_ship_id = userData.get("ship_id").getAsInt();
+        JsonObject kcData = getKcShipDataById(kc_ship_id, "stype");
+
+        return canOpeningASW(userData, kcData);
+    }
 
     /**
      * check the ship can Opening Anti-Submarine Warfare Shelling (対潜先制爆雷攻撃)
      *
      * @param userData required: "ship_id", "slot", "slot_ex", "taisen")
-     * @param kcData   required: "stype", "ctype"
+     * @param kcData   required: "stype"
      * @return true if the ship can Opening ASW
      * @see <a href="https://wikiwiki.jp/kancolle/%E5%AF%BE%E6%BD%9C%E6%94%BB%E6%92%83#trigger_conditions">対潜先制爆雷攻撃(wikiwiki)</a>
      * @see <a href="https://en.kancollewiki.net/Combat/Battle_Opening#Opening_ASW_Shelling_(OASW)">Opening ASW(kancollewiki)</a>
      */
     public static boolean canOpeningASW(JsonObject userData, JsonObject kcData) {
         require(userData, "ship_id", "slot", "slot_ex", "taisen");
-        require(kcData, "stype", "ctype");
+        require(kcData, "stype");
 
         int kc_ship_id = userData.get("ship_id").getAsInt();
         if (canAlwaysOASW(kc_ship_id)) return true;
 
         int stype = kcData.get("stype").getAsInt();
-        int ship_asw = userData.get("taisen").getAsInt();
+        int ship_asw = userData.getAsJsonArray("taisen").get(0).getAsInt();
         SlotItemList slots = slots(userData);
         boolean has_sonar = slots.any(T2_SONAR, T2_SONAR_LARGE);
 
@@ -533,7 +605,6 @@ public class KcCalc {
     }
 
     /**
-     * @param stype ship type
      * @return true if OASW Border of the ship type is 100.
      */
     private static boolean isOASWBorder100(int stype) {
@@ -555,7 +626,7 @@ public class KcCalc {
     }
 
     private static boolean isAircraftOASWable(JsonObject itemData, boolean includeBomber, int asw_border) {
-        require(itemData, "type,tais");
+        require(itemData, "type", "tais");
 
         int type2 = itemData.getAsJsonArray("type").get(2).getAsInt();
 
@@ -600,7 +671,6 @@ public class KcCalc {
                 626 // 神州丸改
         );
     }
-
     // endregion
 
     // region Night CI
@@ -671,7 +741,7 @@ public class KcCalc {
                 2.0, ic_gun_m, ic_gun_m, ic_gun_m, R.string.night_ci_ggg),
         GunGunSGun(130, pred_all, equip(2, 1, 0),
                 1.75, ic_gun_m, ic_gun_m, ic_sub_gun, R.string.night_ci_ggs),
-        TorpTorp(122, pred_all, equip(0, 0, 1),
+        TorpTorp(122, pred_all, equip(0, 0, 2),
                 1.5, ic_torp, ic_torp, ic_torp, R.string.night_ci_ttt),
         GunTorp(115, pred_all, equip(1, 0, 1),
                 1.3, ic_torp, ic_torp, ic_gun_m, R.string.night_ci_ttg),
@@ -724,7 +794,7 @@ public class KcCalc {
             this.pred_stype = stype;
             this.pred_equip = equip;
             this.dmg_factor = dmg;
-            this.ci_icons = new int[] { ic1, ic2, ic3 };
+            this.ci_icons = new int[]{ic1, ic2, ic3};
             this.ci_name = name;
         }
 
@@ -784,13 +854,13 @@ public class KcCalc {
          * 主魚電＞魚見電＞魚魚水＞魚ド水＞(魚魚)<br>
          * this list is sorted as same as the trigger priority of the destroyer CI
          */
-        private static final List<NightCITypes> DD_CI;
+        private static final List<NightCITypes> DESTROYER_CI;
 
         static {
             List<NightCITypes> dd_ci = Lists.newArrayList(
                     DD_GunTorpRadar, DD_TorpSLRadar, DD_TorpTSSLTorp, DD_TorpDrumSL
             );
-            DD_CI = Collections.unmodifiableList(dd_ci);
+            DESTROYER_CI = Collections.unmodifiableList(dd_ci);
         }
 
         /**
@@ -800,9 +870,10 @@ public class KcCalc {
         private static final List<NightCITypes> OTHER_CI;
 
         static {
-            List<NightCITypes> other_ci = Arrays.asList(values());
-            other_ci.removeAll(DD_CI);
-            Collections.sort(other_ci, (a, b) -> (int) signum(a.dmg_factor - b.dmg_factor));
+            List<NightCITypes> other_ci = Lists.newArrayList(values());
+            other_ci.removeAll(DESTROYER_CI);
+            // invert sort
+            Collections.sort(other_ci, (a, b) -> (int) signum(b.dmg_factor - a.dmg_factor));
             OTHER_CI = Collections.unmodifiableList(other_ci);
         }
 
@@ -813,7 +884,7 @@ public class KcCalc {
             List<NightCITypes> list = Lists.newArrayList();
 
             if (stype == STYPE_DD) {
-                for (NightCITypes ci : Iterables.filter(DD_CI, ci -> ci.isTriggerable(stype, slots))) {
+                for (NightCITypes ci : Iterables.filter(DESTROYER_CI, ci -> ci.isTriggerable(stype, slots))) {
                     list.add(ci);
                 }
             }
@@ -828,25 +899,38 @@ public class KcCalc {
     }
     // endregion
 
+    public static Map<NightCITypes, Double> getNightCIRate(int user_ship_id, @Nullable EnumSet<NightCIBonus> bonuses) {
+        JsonObject userData = getUserShipDataById(user_ship_id, "ship_id,lv,lucky,slot,slot_ex");
+        int kc_ship_id = userData.get("ship_id").getAsInt();
+        JsonObject kcData = getKcShipDataById(kc_ship_id, "id,stype,houg,raig");
+        if (kcData == null) return Collections.emptyMap();
+        return getNightCIRate(userData, kcData, bonuses);
+    }
+
     /**
-     * @param user_ship_id user/member ship id
+     * @param userData required: "lv", "lucky", "slot", "slot_ex"
+     * @param kcData   required: "id", "stype", "houg", "raig"
      * @return a unmodifiable, ci_type to rate map. empty if no cut-ins triggerable
      * @see <a href="https://wikiwiki.jp/kancolle/%E5%A4%9C%E6%88%A6#nightcutin1">夜戦 (wikiwiki)</a>
      * @see <a href="https://kancolle.fandom.com/wiki/Combat/Night_Battle">Night Battle ()</a>
      */
-    public static Map<NightCITypes, Double> getNightCIRate(int user_ship_id, EnumSet<NightCIBonus> bonuses) {
-        JsonObject userData = getUserShipDataById(user_ship_id, "ship_id,lv,luck,slot,slot_ex");
-        int kc_ship_id = userData.get("ship_id").getAsInt();
-        JsonObject kcData = getKcShipDataById(kc_ship_id, "id,stype,houg,raig");
-        if (kcData == null) return Collections.emptyMap();
+    public static Map<NightCITypes, Double> getNightCIRate(
+            JsonObject userData,
+            JsonObject kcData,
+            @Nullable EnumSet<NightCIBonus> bonuses
+    ) {
+        require(userData, "lv", "lucky", "slot", "slot_ex");
+        require(kcData, "id", "stype", "houg", "raig");
+
+        bonuses = (bonuses == null) ? EnumSet.noneOf(NightCIBonus.class) : bonuses;
 
         int lv = userData.get("lv").getAsInt();
-        int luck = userData.get("luck").getAsInt();
+        int luck = userData.getAsJsonArray("lucky").get(0).getAsInt();
         SlotItemList slots = slots(userData);
         int stype = kcData.get("stype").getAsInt();
 
         if (canNightAttack(kcData)) {
-            Map<NightCITypes, Double> map = Maps.newEnumMap(NightCITypes.class);
+            Map<NightCITypes, Double> map = new EnumMap<>(NightCITypes.class);
 
             double base_term = getNightCITerm(lv, luck);
             int bonus_term = getNightCIBonusTerm(bonuses);
@@ -858,7 +942,7 @@ public class KcCalc {
             return map;
         }
 
-        // TODO: not implemented
+        // TODO: Carrier CI is not implemented
         return Collections.emptyMap();
     }
 
