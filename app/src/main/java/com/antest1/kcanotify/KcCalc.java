@@ -413,9 +413,177 @@ public class KcCalc {
 
     // endregion
 
-    public static boolean canOpeningASW() {
+    // region ASW
+    /**
+     * check the ship can Opening Anti-Submarine Warfare Shelling (対潜先制爆雷攻撃)
+     *
+     * @param userData required: "ship_id", "slot", "slot_ex", "taisen")
+     * @param kcData   required: "stype", "ctype"
+     * @return true if the ship can Opening ASW
+     * @see <a href="https://wikiwiki.jp/kancolle/%E5%AF%BE%E6%BD%9C%E6%94%BB%E6%92%83#trigger_conditions">対潜先制爆雷攻撃(wikiwiki)</a>
+     * @see <a href="https://en.kancollewiki.net/Combat/Battle_Opening#Opening_ASW_Shelling_(OASW)">Opening ASW(kancollewiki)</a>
+     */
+    public static boolean canOpeningASW(JsonObject userData, JsonObject kcData) {
+        require(userData, "ship_id", "slot", "slot_ex", "taisen");
+        require(kcData, "stype", "ctype");
 
+        int kc_ship_id = userData.get("ship_id").getAsInt();
+        if (canAlwaysOASW(kc_ship_id)) return true;
+
+        int stype = kcData.get("stype").getAsInt();
+        int ship_asw = userData.get("taisen").getAsInt();
+        SlotItemList slots = slots(userData);
+        boolean has_sonar = slots.any(T2_SONAR, T2_SONAR_LARGE);
+
+        if (isOASWBorder100(stype) && ship_asw >= 100 && has_sonar) {
+            return true;
+        }
+
+        if (stype == STYPE_DE) {
+            if (has_sonar && ship_asw >= 60) return true;
+
+            int sum_of_equip_asw = 0;
+            for (JsonObject itemData : slots.query("", "tais")) {
+                sum_of_equip_asw += itemData.get("tais").getAsInt();
+            }
+
+            // [incorrect] I think it should include bonus asw, but IDK how to do it.
+            // bonus asw does not include to it. see wikiwiki > bottom of table > 3rd item > 1st item
+
+            if (sum_of_equip_asw >= 4) return true;
+        }
+
+        if (isTaiyouClass(kc_ship_id)) {
+
+            for (JsonObject itemData : slots.query("", "type,tais")) {
+                if (isAircraftOASWable(itemData, true, 1)) return true;
+            }
+        }
+
+        if (stype == STYPE_CVL && !isAttackerCVL(kc_ship_id)) {
+            if (ship_asw >= 50 && has_sonar) {
+                for (JsonObject itemData : slots.query("", "type,tais")) {
+                    if (isAircraftOASWable(itemData, false, 7)) return true;
+                }
+            }
+            if (ship_asw >= 65) {
+                for (JsonObject itemData : slots.query("", "type,tais")) {
+                    if (isAircraftOASWable(itemData, false, 7)) return true;
+                }
+            }
+            if (ship_asw >= 100 && has_sonar) {
+                for (JsonObject itemData : slots.query("", "type,tais")) {
+                    if (isAircraftOASWable(itemData, true, 1)) return true;
+                }
+            }
+        }
+
+        if (kc_ship_id == 554 /* 日向改二 */) {
+            int autogyro_score = 0;
+            for (JsonObject itemData : slots.query("", "id,type")) {
+                autogyro_score += isAutogyro(itemData);
+            }
+
+            if (autogyro_score >= 2) return true;
+        }
+
+        if (isSeaBomberOASWable(kc_ship_id) && ship_asw >= 100 && has_sonar) {
+            for (JsonObject itemData : slots.query("", "type")) {
+                int type2 = itemData.getAsJsonArray("type").get(2).getAsInt();
+                if (type2 == T2_SEA_BOMBER || type2 == T2_ANTISUB_PATROL) return true;
+            }
+        }
+
+        return false;
     }
+
+    private static boolean canAlwaysOASW(int kc_ship_id) {
+
+        // TODO: add when new ship added who can innately OASW
+        // consider replace with ctype check when new ship (e.g. new J-class or Fletcher-class)
+        // but I don't know how to judge kai/kai-ni of the ship
+        return any(
+                kc_ship_id,
+                141, // 五十鈴改二
+                478, // 龍田改二
+                624, // 夕張改二丁
+                394, 893, // Jervis改, Janus改
+                561, 681, // Samuel B.Roberts/改
+                596, 692, 628, 629, // Fletcher/改/改 Mod.2/Mk.II
+                562, 689 // Johnston/改
+        );
+    }
+
+    /**
+     * @param stype ship type
+     * @return true if OASW Border of the ship type is 100.
+     */
+    private static boolean isOASWBorder100(int stype) {
+        return any(stype, STYPE_DD, STYPE_CL, STYPE_CT, STYPE_CLT, STYPE_AO);
+    }
+
+    /**
+     * @return if the ship is Taiyou Kai/Kai-ni, Shinyou Kai/Kai-ni, Kaga Kai-ni Go,
+     */
+    private static boolean isTaiyouClass(int kc_ship_id) {
+
+        // also contains Kaga Kai-ni Go
+        return any(
+                kc_ship_id,
+                380, 529, // 大鷹改/改二
+                381, 536, // 神鷹改/改二
+                646 // 加賀改二護
+        );
+    }
+
+    private static boolean isAircraftOASWable(JsonObject itemData, boolean includeBomber, int asw_border) {
+        require(itemData, "type,tais");
+
+        int type2 = itemData.getAsJsonArray("type").get(2).getAsInt();
+
+        if (type2 == T2_TORPEDO_BOMBER || (includeBomber && type2 == T2_BOMBER)) {
+            return itemData.get("tais").getAsInt() >= asw_border;
+        }
+
+        return type2 == T2_ANTISUB_PATROL || type2 == T2_AUTOGYRO;
+    }
+
+    private static boolean isAttackerCVL(int kc_ship_id) {
+
+        return kc_ship_id == 508 /* 鈴谷航改二 */ || kc_ship_id == 509 /* 熊野航改二 */;
+    }
+
+    /**
+     * @return 1 if auto-gyro, 2 if helicopter, otherwise 0
+     */
+    private static int isAutogyro(JsonObject itemData) {
+        require(itemData, "id", "type");
+
+        int id = itemData.get("id").getAsInt();
+        int type2 = itemData.getAsJsonArray("type").get(2).getAsInt();
+
+        if (type2 == T2_AUTOGYRO) {
+            if (id == 326 /* S-51J */ || id == 327 /* S-51J改 */) {
+                return 2;
+            } else {
+                return 1;
+            }
+        }
+
+        return 0;
+    }
+
+    private static boolean isSeaBomberOASWable(int kc_ship_id) {
+
+        return any(
+                kc_ship_id,
+                411, // 扶桑改二
+                412, // 山城改二
+                626 // 神州丸改
+        );
+    }
+
+    // endregion
 
     public static final class NightCI {
 
