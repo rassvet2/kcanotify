@@ -77,8 +77,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-// TODO: replace all "slot_ex" with "exslot"
-
 /**
  * This class is a fat utility god (lol) class for various calculation of kancolle.
  * <p>
@@ -432,6 +430,7 @@ public class KcCalc {
      * Calculate the probability of the Anti-Air Cut-Ins (対空CI)
      *
      * @return
+     * @see <a href="https://github.com/noro6/kcTools/blob/master/js/data.js#:~:text=const%20ANTIAIR_CUTIN%20%3D%20%5B">対空CI (制空権シミュレーター)</a>
      */
     public static double getAACIRate() {
         // TODO
@@ -492,7 +491,6 @@ public class KcCalc {
         // AV: 水上機母艦
         return any(stype, STYPE_BBV, STYPE_CAV, STYPE_CVL, STYPE_CV, STYPE_CVB, STYPE_CVE, STYPE_AV);
     }
-
     // endregion
 
     // region ASW
@@ -985,7 +983,7 @@ public class KcCalc {
          */
         SkilledLookouts(+5),
         /**
-         * has torpedo squad skilled lookouts ()
+         * has torpedo squad skilled lookouts (水雷戦隊熟練見張員)
          */
         TorpedoSquadLookouts(+9);
 
