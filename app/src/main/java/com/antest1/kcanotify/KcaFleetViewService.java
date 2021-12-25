@@ -14,8 +14,10 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
+
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
+
 import android.util.Log;
 import android.view.Display;
 import android.view.Gravity;
@@ -29,6 +31,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.common.io.ByteStreams;
 import com.google.gson.JsonArray;
@@ -39,6 +42,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -49,6 +53,7 @@ import static com.antest1.kcanotify.KcaAkashiViewService.SHOW_AKASHIVIEW_ACTION;
 import static com.antest1.kcanotify.KcaApiData.getItemTranslation;
 import static com.antest1.kcanotify.KcaApiData.getKcItemStatusById;
 import static com.antest1.kcanotify.KcaApiData.getUserItemStatusById;
+import static com.antest1.kcanotify.KcaApiData.getUserShipDataById;
 import static com.antest1.kcanotify.KcaApiData.isGameDataLoaded;
 import static com.antest1.kcanotify.KcaApiData.isItemAircraft;
 import static com.antest1.kcanotify.KcaApiData.loadTranslationData;
@@ -65,6 +70,7 @@ import static com.antest1.kcanotify.KcaQuestViewService.SHOW_QUESTVIEW_ACTION_NE
 import static com.antest1.kcanotify.KcaUseStatConstant.CLOSE_FLEETVIEW;
 import static com.antest1.kcanotify.KcaUseStatConstant.FV_BTN_PRESS;
 import static com.antest1.kcanotify.KcaUseStatConstant.OPEN_FLEETVIEW;
+import static com.antest1.kcanotify.KcaUtils.format;
 import static com.antest1.kcanotify.KcaUtils.getBooleanPreferences;
 import static com.antest1.kcanotify.KcaUtils.getContextWithLocale;
 import static com.antest1.kcanotify.KcaUtils.getId;
@@ -81,8 +87,8 @@ public class KcaFleetViewService extends Service {
     public static final String REFRESH_FLEETVIEW_ACTION = "update_fleetview_action";
     public static final String CLOSE_FLEETVIEW_ACTION = "close_fleetview_action";
     public static final String[] fleetview_menu_keys = {"quest", "excheck", "develop", "construction", "docking", "maphp", "fchk", "labinfo", "akashi"};
-    public static final String DECKINFO_REQ_LIST = "id,ship_id,lv,exp,slot,slot_ex,onslot,cond,maxhp,nowhp,sally_area";
-    public static final String KC_DECKINFO_REQ_LIST = "name,maxeq,stype";
+    public static final String DECKINFO_REQ_LIST = "id,ship_id,lv,exp,slot,slot_ex,onslot,cond,maxhp,nowhp,sally_area,lucky,taiku,taisen";
+    public static final String KC_DECKINFO_REQ_LIST = "name,maxeq,stype,id,ctype,houg,raig";
 
     public static final int FLEET_COMBINED_ID = 4;
     final int fleetview_menu_margin = 40;
@@ -173,7 +179,7 @@ public class KcaFleetViewService extends Service {
                 ImageView equipcntviewicon = fleetHqInfoView.findViewById(R.id.fleetview_cnt2_icon);
 
                 shipcntview.setText(KcaUtils.format("%d/%d", KcaApiData.getShipSize(), KcaApiData.getUserMaxShipCount()));
-                if (KcaApiData.checkEventUserShip()){
+                if (KcaApiData.checkEventUserShip()) {
                     shipcntview.setTextColor(ContextCompat.getColor(getApplicationContext(), R.color.colorHqCheckEventCondFailed));
                     shipcntviewicon.setColorFilter(ContextCompat.getColor(getApplicationContext(),
                             R.color.colorHqCheckEventCondFailed), PorterDuff.Mode.MULTIPLY);
@@ -184,7 +190,7 @@ public class KcaFleetViewService extends Service {
                 }
 
                 equipcntview.setText(KcaUtils.format("%d/%d", KcaApiData.getItemSize(), KcaApiData.getUserMaxItemCount()));
-                if (KcaApiData.checkEventUserItem()){
+                if (KcaApiData.checkEventUserItem()) {
                     equipcntview.setTextColor(ContextCompat.getColor(getApplicationContext(), R.color.colorHqCheckEventCondFailed));
                     equipcntviewicon.setColorFilter(ContextCompat.getColor(getApplicationContext(),
                             R.color.colorHqCheckEventCondFailed), PorterDuff.Mode.MULTIPLY);
@@ -343,7 +349,7 @@ public class KcaFleetViewService extends Service {
                 fleetMenuArea.addView(menuBtnList.get(order.get(i).getAsInt()));
             }
         } else {
-            for (TextView tv: menuBtnList) {
+            for (TextView tv : menuBtnList) {
                 fleetMenuArea.addView(tv);
             }
         }
@@ -520,6 +526,40 @@ public class KcaFleetViewService extends Service {
                             itemdata.add("api_onslot", udata.get("onslot"));
                             itemdata.add("api_maxslot", kcdata.get("maxeq"));
 
+                            KcCalc.init(getApplicationContext());
+                            Log.d("Test", getKcShipDataById(Integer.parseInt(ship_id), KC_DECKINFO_REQ_LIST).toString());
+                            int user_ship_id = udata.get("id").getAsInt();
+                            try {
+//                                Log.d("KcCalc", "can OASW: " + KcCalc.canOpeningASW(udata, kcdata));
+                                Log.d("KcCalc", "can OASW: " + KcCalc.canOpeningASW(user_ship_id));
+                            } catch (Throwable e) {
+                                e.printStackTrace();
+                            }
+                            try {
+//                                Log.d("KcCalc", "AAPB rate: " + KcCalc.getAAPBTriggerRate(udata, kcdata));
+                                Log.d("KcCalc", "AAPB rate: " + KcCalc.getAAPBTriggerRate(user_ship_id));
+                            } catch (Throwable e) {
+                                e.printStackTrace();
+                            }
+                            try {
+
+//                                Map<KcCalc.NightCITypes, Double> ci_list = KcCalc.getNightCIRate(udata, kcdata, null);
+                                Map<KcCalc.NightCITypes, Double> ci_list = KcCalc.getNightCIRate(user_ship_id, null);
+                                JsonObject out = new JsonObject();
+                                for (Map.Entry<KcCalc.NightCITypes, Double> ci : ci_list.entrySet()) {
+                                    out.addProperty(ci.getKey().getCIName(contextWithLocale, true), format("%.1f%%", ci.getValue() * 100));
+                                }
+                                Log.d("KcCalc", "NightCI rate: " + out);
+                            } catch (Throwable e) {
+                                e.printStackTrace();
+                            }
+                            try {
+//                                Log.d("KcCalc", "Adjusted AA: " + KcCalc.getAdjustedAA(udata));
+                                Log.d("KcCalc", "Adjusted AA: " + KcCalc.getAdjustedAA(user_ship_id));
+                            } catch (Throwable e) {
+                                e.printStackTrace();
+                            }
+
                             setItemViewLayout(itemdata, ship_id, ship_married);
                             itemViewParams = new WindowManager.LayoutParams(
                                     WindowManager.LayoutParams.WRAP_CONTENT,
@@ -690,7 +730,7 @@ public class KcaFleetViewService extends Service {
             fleetInfoLine.setBackgroundColor(ContextCompat.getColor(getApplicationContext(), R.color.colorFleetInfoNoShip));
             fleetInfoLine.setText(getStringWithLocale(R.string.kca_init_content));
             mView.findViewById(R.id.fleet_list_main).setVisibility(INVISIBLE);
-            mView.findViewById(R.id.fleet_list_combined).setVisibility(is_landscape? INVISIBLE : View.GONE);
+            mView.findViewById(R.id.fleet_list_combined).setVisibility(is_landscape ? INVISIBLE : View.GONE);
             fleetSwitchBtn.setVisibility(View.GONE);
             return;
         }
@@ -700,12 +740,12 @@ public class KcaFleetViewService extends Service {
             fleetInfoLine.setBackgroundColor(ContextCompat.getColor(getApplicationContext(), R.color.colorFleetInfoNoShip));
             fleetInfoLine.setText(fleetCalcInfoText);
             mView.findViewById(R.id.fleet_list_main).setVisibility(INVISIBLE);
-            mView.findViewById(R.id.fleet_list_combined).setVisibility(is_landscape? INVISIBLE : View.GONE);
+            mView.findViewById(R.id.fleet_list_combined).setVisibility(is_landscape ? INVISIBLE : View.GONE);
             fleetSwitchBtn.setVisibility(View.GONE);
             return;
         }
 
-        if(is_landscape) {
+        if (is_landscape) {
             fleetSwitchBtn.setVisibility(View.GONE);
             mView.findViewById(R.id.fleet_list_main).setVisibility(View.VISIBLE);
             mView.findViewById(R.id.fleet_list_combined).setVisibility(is_combined ? View.VISIBLE : INVISIBLE);
@@ -857,7 +897,7 @@ public class KcaFleetViewService extends Service {
                 }
             }
             if (moraleCompleteTime > 0) {
-                int diff = Math.max(0, (int)(moraleCompleteTime - System.currentTimeMillis()) / 1000);
+                int diff = Math.max(0, (int) (moraleCompleteTime - System.currentTimeMillis()) / 1000);
                 String moraleTimeText = KcaUtils.getTimeStr(diff);
                 displayText = moraleTimeText.concat(" | ").concat(fleetCalcInfoText);
             } else {
